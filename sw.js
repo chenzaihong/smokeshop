@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smokeshop-workbench-v8';
+const CACHE_NAME = 'smokeshop-workbench-v9';
 const ASSETS = [
   '/',
   '/index.html',
@@ -31,12 +31,10 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
-// 接收消息：强制跳过等待
 self.addEventListener('message', event => {
   if (event.data === 'skipWaiting') self.skipWaiting();
 });
 
-// 网络优先策略：优先获取最新版本，失败才回退缓存
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   event.respondWith(
