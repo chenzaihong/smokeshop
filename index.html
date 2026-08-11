@@ -1764,7 +1764,7 @@
 
         <div class="about-box">
             <div class="app-name">🏪 烟酒店工作台</div>
-            <div class="version">版本 3.1.0 · PWA · 云端同步(已修复)</div>
+            <div class="version">版本 3.2.0 · PWA · 云端同步(已修复)</div>
             <div style="margin-top:8px;font-size:12px;">手机端营业管理工具</div>
         </div>
     </div>
@@ -1990,40 +1990,75 @@ function stampRecord(record) {
 function mergeArrays(localArr, cloudArr, key) {
     if (!Array.isArray(localArr)) localArr = [];
     if (!Array.isArray(cloudArr)) cloudArr = [];
-    const map = new Map();
+    const map = new Map();      // 有ID的记录
+    const tombstones = new Set(); // 被删除的记录ID
     const noIdLocal = [];
     const noIdCloud = [];
 
-    // 先放云端记录
+    // 先处理云端记录，收集墓碑
     for (const r of cloudArr) {
         const id = getRecordId(r, key);
         if (id) {
-            map.set(id, { ...r });
+            if (r._deleted) {
+                tombstones.add(id);
+                map.set(id, { ...r }); // 保留墓碑记录，带时间戳
+            } else if (!tombstones.has(id)) {
+                map.set(id, { ...r });
+            }
         } else {
             noIdCloud.push(r);
         }
     }
-    // 再合并本地记录（同id取最新ts）
+    // 再合并本地记录
     for (const r of localArr) {
         const id = getRecordId(r, key);
         if (id) {
-            const existing = map.get(id);
-            if (!existing) {
-                map.set(id, { ...r });
-            } else {
-                const localTs = r._ts || 0;
-                const cloudTs = existing._ts || 0;
-                if (localTs >= cloudTs) {
+            if (r._deleted) {
+                // 本地也是墓碑，取时间戳更新的那个
+                tombstones.add(id);
+                const existing = map.get(id);
+                if (!existing || (r._ts || 0) >= (existing._ts || 0)) {
                     map.set(id, { ...r });
+                }
+            } else if (tombstones.has(id)) {
+                // 云端已删除，但本地还有——检查时间戳
+                // 如果本地记录比墓碑新，说明是墓碑之后又重新添加的，保留
+                const tombstone = map.get(id);
+                if ((r._ts || 0) > (tombstone._ts || 0)) {
+                    tombstones.delete(id);
+                    map.set(id, { ...r });
+                }
+                // 否则：已被删除，不复活（不加入 map）
+            } else {
+                const existing = map.get(id);
+                if (!existing) {
+                    map.set(id, { ...r });
+                } else {
+                    const localTs = r._ts || 0;
+                    const cloudTs = existing._ts || 0;
+                    if (localTs >= cloudTs) {
+                        map.set(id, { ...r });
+                    }
                 }
             }
         } else {
             noIdLocal.push(r);
         }
     }
-    // 无ID的记录：本地优先（配置类，本地通常是最新的）
-    // 但如果云端有而本地没有的，也要保留
-    const result = Array.from(map.values());
+    // 构建结果：非墓碑记录 + 保留墓碑（供其他设备同步，7天后清理）
+    const now = Date.now();
+    const TOMBSTONE_TTL = 7 * 24 * 60 * 60 * 1000; // 墓碑保留7天
+    const result = [];
+    for (const [id, r] of map) {
+        if (r._deleted) {
+            // 超过TTL的墓碑直接丢弃，没超的保留传播
+            if (r._ts && (now - r._ts) < TOMBSTONE_TTL) {
+                result.push(r);
+            }
+        } else {
+            result.push(r);
+        }
+    }
     // 无ID记录去重（按 JSON 字符串）
     const seenNoId = new Set();
     for (const r of noIdLocal) {
@@ -2719,14 +2754,34 @@ function loadData() {
     if (saved) {
         try {
             const parsed = JSON.parse(saved);
-            data = Array.isArray(parsed) ? parsed.filter(r => r && typeof r === 'object' && r.date) : [];
+            data = Array.isArray(parsed) ? parsed.filter(r => r && typeof r === 'object' && r.date && !r._deleted) : [];
         } catch(e) { data = []; }
     }
     if (!Array.isArray(data)) data = [];
 }
 
+// 保存时：把当前内存数据与 localStorage 中已有的墓碑合并，再写入
+// 这样删除操作产生的墓碑不会被 save 覆盖丢失
+function saveWithTombstones(storageKey, liveData) {
+    try {
+        const existing = localStorage.getItem(storageKey);
+        if (existing) {
+            const parsed = JSON.parse(existing);
+            if (Array.isArray(parsed)) {
+                // 取出 localStorage 中有但内存中没有的墓碑记录
+                const liveIds = new Set(liveData.map(r => getRecordId(r, storageKey)).filter(Boolean));
+                const tombstones = parsed.filter(r => r && r._deleted && getRecordId(r, storageKey) && !liveIds.has(getRecordId(r, storageKey)));
+                const combined = [...liveData, ...tombstones];
+                syncToCloud(storageKey, combined);
+                return;
+            }
+        }
+    } catch(e) {}
+    syncToCloud(storageKey, liveData);
+}
+
 function saveData() {
-    syncToCloud(STORAGE_KEY, data);
+    saveWithTombstones(STORAGE_KEY, data);
 }
 
 // ========== Expense Data Load/Save ==========
@@ -2735,7 +2790,7 @@ function loadExpenseData() {
     if (savedExp) {
         try {
             const parsed = JSON.parse(savedExp);
-            expenses = Array.isArray(parsed) ? parsed.filter(r => r && typeof r === 'object' && r.date) : [];
+            expenses = Array.isArray(parsed) ? parsed.filter(r => r && typeof r === 'object' && r.date && !r._deleted) : [];
         } catch(e) { expenses = []; }
     }
     if (!Array.isArray(expenses)) expenses = [];
@@ -2749,7 +2804,7 @@ function loadExpenseData() {
 }
 
 function saveExpenseData() {
-    syncToCloud(EXP_KEY, expenses);
+    saveWithTombstones(EXP_KEY, expenses);
 }
 
 function saveExpenseConfig() {
@@ -2762,7 +2817,7 @@ function loadDistData() {
     if (savedDist) {
         try {
             const parsed = JSON.parse(savedDist);
-            distributes = Array.isArray(parsed) ? parsed.filter(r => r && typeof r === 'object' && r.date) : [];
+            distributes = Array.isArray(parsed) ? parsed.filter(r => r && typeof r === 'object' && r.date && !r._deleted) : [];
         } catch(e) { distributes = []; }
     }
     if (!Array.isArray(distributes)) distributes = [];
@@ -2775,7 +2830,7 @@ function loadDistData() {
 }
 
 function saveDistData() {
-    syncToCloud(DIST_KEY, distributes);
+    saveWithTombstones(DIST_KEY, distributes);
 }
 
 function saveDistConfig() {
@@ -2788,7 +2843,7 @@ function loadDistInventory() {
     if (saved) {
         try {
             const parsed = JSON.parse(saved);
-            distInventory = Array.isArray(parsed) ? parsed.filter(r => r && typeof r === 'object') : [];
+            distInventory = Array.isArray(parsed) ? parsed.filter(r => r && typeof r === 'object' && !r._deleted) : [];
             // 清除所有收烟价格，用户手动输入
             let changed = false;
             distInventory.forEach(item => {
@@ -2804,7 +2859,7 @@ function loadDistInventory() {
 }
 
 function saveDistInventory() {
-    syncToCloud(DIST_INV_KEY, distInventory);
+    saveWithTombstones(DIST_INV_KEY, distInventory);
 }
 
 // 生成发烟编号
@@ -2940,7 +2995,7 @@ function loadInventory() {
     if (saved) {
         try {
             const parsed = JSON.parse(saved);
-            inventory = Array.isArray(parsed) ? parsed.filter(r => r && typeof r === 'object') : [];
+            inventory = Array.isArray(parsed) ? parsed.filter(r => r && typeof r === 'object' && !r._deleted) : [];
         } catch(e) { inventory = []; }
     } else {
         // 首次使用：加载种子库存数据
@@ -2951,7 +3006,7 @@ function loadInventory() {
 }
 
 function saveInventory() {
-    syncToCloud(INV_KEY, inventory);
+    saveWithTombstones(INV_KEY, inventory);
 }
 
 // 内置烟酒名称数据库（622条）
@@ -3587,7 +3642,8 @@ function saveInventoryInline() {
 
 function deleteInventory(id) {
     if (!confirm('确定删除这个库存商品？')) return;
-    inventory = inventory.filter(i => i.id !== id);
+    inventory = inventory.map(i => i.id === id ? { ...i, _deleted: true, _ts: Date.now(), _dev: getDeviceId() } : i);
+    inventory = inventory.filter(i => !i._deleted);
     saveInventory();
     renderInventoryList();
     renderInvRecentList();
@@ -4438,7 +4494,10 @@ function deleteRecord(id) {
     if (row && row.name && row.quantity) {
         restockInventory(row.name, row.category, row.quantity);
     }
-    data = data.filter(r => r.id !== id);
+    // 墓碑机制：标记删除而非物理删除，让其他设备能同步删除操作
+    data = data.map(r => r.id === id ? { ...r, _deleted: true, _ts: Date.now(), _dev: getDeviceId() } : r);
+    // 界面上过滤掉已删除的记录
+    data = data.filter(r => !r._deleted);
     saveData();
     renderDetailList();
     renderSummary();
@@ -4623,7 +4682,8 @@ function renderDailyExpenseDetail() {
 
 function deleteExpense(id) {
     if (!confirm('确定删除这条支出记录？')) return;
-    expenses = expenses.filter(r => r.id !== id);
+    expenses = expenses.map(r => r.id === id ? { ...r, _deleted: true, _ts: Date.now(), _dev: getDeviceId() } : r);
+    expenses = expenses.filter(r => !r._deleted);
     saveExpenseData();
     renderDetailList();
     renderSummary();
@@ -4837,7 +4897,8 @@ function deleteDist(id) {
     if (row && row.name) {
         restockDistInventory(row.name, row.quantity);
     }
-    distributes = distributes.filter(r => r.id !== id);
+    distributes = distributes.map(r => r.id === id ? { ...r, _deleted: true, _ts: Date.now(), _dev: getDeviceId() } : r);
+    distributes = distributes.filter(r => !r._deleted);
     saveDistData();
     renderDetailList();
     renderSummary();
@@ -4937,7 +4998,8 @@ function addDistInventory() {
 // 删除收烟库存
 function deleteDistInventory(id) {
     if (!confirm('确定删除这条收烟库存？')) return;
-    distInventory = distInventory.filter(i => i.id !== id);
+    distInventory = distInventory.map(i => i.id === id ? { ...i, _deleted: true, _ts: Date.now(), _dev: getDeviceId() } : i);
+    distInventory = distInventory.filter(i => !i._deleted);
     saveDistInventory();
     renderDistInventory();
     updateDistInvStats();
@@ -6084,7 +6146,7 @@ init();
 // Register Service Worker for PWA
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=8')
+        navigator.serviceWorker.register('/sw.js?v=9')
             .then(reg => {
                 console.log('SW registered:', reg.scope);
                 // 检查更新，有新版本立即激活
