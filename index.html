@@ -1231,6 +1231,19 @@
 })();
 </script></head>
 <body data-theme="blue">
+
+<!-- Token 设置面板（首次使用时显示） -->
+<div id="tokenSetup" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;">
+<div style="background:#fff;border-radius:12px;padding:24px;width:90%;max-width:360px;text-align:center;">
+<div style="font-size:40px;margin-bottom:8px;">🔐</div>
+<div style="font-size:18px;font-weight:bold;color:#1a5276;margin-bottom:4px;">同步设置</div>
+<div style="font-size:13px;color:#666;margin-bottom:16px;">请输入 GitHub Token 以启用数据同步</div>
+<input id="tokenInput" type="password" placeholder="ghp_xxx" style="width:100%;padding:12px;border:2px solid #ddd;border-radius:8px;font-size:14px;text-align:center;margin-bottom:12px;">
+<button onclick="saveToken()" style="width:100%;padding:12px;background:#1a5276;color:#fff;border:none;border-radius:8px;font-size:16px;font-weight:bold;">确认并同步</button>
+<div id="tokenError" style="color:#e74c3c;font-size:12px;margin-top:8px;display:none;"></div>
+</div>
+</div>
+
 <div id="app">
 
     <!-- ========== Page: Record (记账 - 含营业情况/支出/发烟/明细汇总) ========== -->
@@ -1922,14 +1935,31 @@ const GH_REPO = 'smokeshop';
 const GH_FILE = 'data/sync.json';
 const GH_API = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`;
 
-// Token 从 localStorage 读取，首次使用需输入
+// Token 从 localStorage 读取，首次使用显示设置面板
+let _tokenResolve = null;
 function getToken() {
     let token = localStorage.getItem('smokeshop_gh_token');
     if (!token) {
-        token = prompt('请输入 GitHub Token（用于同步数据）：');
-        if (token) localStorage.setItem('smokeshop_gh_token', token);
+        // 显示设置面板
+        document.getElementById('tokenSetup').style.display = 'flex';
+        return new Promise((resolve) => { _tokenResolve = resolve; });
     }
     return token;
+}
+function saveToken() {
+    const input = document.getElementById('tokenInput');
+    const token = input.value.trim();
+    if (!token) {
+        document.getElementById('tokenError').style.display = 'block';
+        document.getElementById('tokenError').textContent = '请输入 Token';
+        return;
+    }
+    localStorage.setItem('smokeshop_gh_token', token);
+    document.getElementById('tokenSetup').style.display = 'none';
+    if (_tokenResolve) {
+        _tokenResolve(token);
+        _tokenResolve = null;
+    }
 }
 const SYNC_KEY_MAP = {
     'smokeshop_workbench_v2': 'data',
@@ -2013,7 +2043,7 @@ function schedulePush() {
             const res = await fetch(GH_API, {
                 method: 'PUT',
                 headers: {
-                    'Authorization': 'Bearer ' + getToken(),
+                    'Authorization': 'Bearer ' + (await getToken()),
                     'Content-Type': 'application/json',
                     'Accept': 'application/vnd.github.v3+json'
                 },
@@ -2033,7 +2063,7 @@ async function pullFromCloud() {
     try {
         const res = await fetch(GH_API, {
             headers: {
-                'Authorization': 'Bearer ' + GH_TOKEN,
+                'Authorization': 'Bearer ' + getToken(),
                 'Accept': 'application/vnd.github.v3+json'
             }
         });
@@ -2080,7 +2110,7 @@ async function doLogin() {
         try {
             const res = await fetch(GH_API, {
                 headers: {
-                    'Authorization': 'Bearer ' + getToken(),
+                    'Authorization': 'Bearer ' + (await getToken()),
                     'Accept': 'application/vnd.github.v3+json'
                 }
             });
@@ -2292,7 +2322,7 @@ async function init() {
     try {
         const res = await fetch(GH_API, {
             headers: {
-                'Authorization': 'Bearer ' + GH_TOKEN,
+                'Authorization': 'Bearer ' + getToken(),
                 'Accept': 'application/vnd.github.v3+json'
             }
         });
