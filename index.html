@@ -6,14 +6,14 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="烟酒店">
+    <meta name="apple-mobile-web-app-title" content="宏泰烟酒">
     <meta name="theme-color" content="#1a5276" id="metaTheme">
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" type="image/png" href="/icons/favicon.png">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
     <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192.png">
     <link rel="apple-touch-icon" sizes="512x512" href="/icons/icon-512.png">
-    <title>烟酒店工作台</title>
+    <title>宏泰烟酒</title>
     <style>
         /* ====================================================
            Theme A: 蓝白（默认主色调）
@@ -1914,9 +1914,23 @@
 //  双主题 · 本地存储 · JSONBlob 云端同步（无需后端服务器）
 // ============================================================
 
-// ==================== 云端同步层（Flask 后端） ====================
-// 使用 Flask 同步服务器，无大小限制，双向实时同步
-const SYNC_API = '/sync/';
+// ==================== 云端同步层（GitHub API） ====================
+// 数据存储在 GitHub 仓库的 data/sync.json 文件中
+// 双向实时同步，无需后端服务器
+const GH_OWNER = 'chenzaihong';
+const GH_REPO = 'smokeshop';
+const GH_FILE = 'data/sync.json';
+const GH_API = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`;
+
+// Token 从 localStorage 读取，首次使用需输入
+function getToken() {
+    let token = localStorage.getItem('smokeshop_gh_token');
+    if (!token) {
+        token = prompt('请输入 GitHub Token（用于同步数据）：');
+        if (token) localStorage.setItem('smokeshop_gh_token', token);
+    }
+    return token;
+}
 const SYNC_KEY_MAP = {
     'smokeshop_workbench_v2': 'data',
     'smokeshop_categories_v2': 'categories',
@@ -1934,10 +1948,10 @@ let currentUser = null;
 let isAppReady = false;
 let pollTimer = null;
 let pushTimer = null;
-const SYNC_INTERVAL = 2000;  // 2秒轮询
+let cloudFileSHA = null;  // GitHub 文件 SHA，更新时需要
+const SYNC_INTERVAL = 4000;  // 4秒轮询（GitHub API 5000次/小时够用）
 
-// ========== 双向实时同步（Flask 后端） ==========
-// 每次操作后 PUT 全量数据，每 2 秒 GET 拉取覆盖
+// ========== 双向实时同步（GitHub API） ==========
 
 function buildCloudPayload() {
     const payload = {};
@@ -1987,11 +2001,29 @@ function schedulePush() {
         if (!currentUser) return;
         try {
             const payload = buildCloudPayload();
-            await fetch(SYNC_API + currentUser, {
-                method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+            const jsonStr = JSON.stringify(payload);
+            const b64 = btoa(unescape(encodeURIComponent(jsonStr)));
+            const body = {
+                message: 'sync: ' + new Date().toISOString(),
+                content: b64,
+                branch: 'main'
+            };
+            if (cloudFileSHA) body.sha = cloudFileSHA;
+            
+            const res = await fetch(GH_API, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': 'Bearer ' + getToken(),
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/vnd.github.v3+json'
+                },
+                body: JSON.stringify(body)
             });
-        } catch(e) {}
+            if (res.ok) {
+                const result = await res.json();
+                cloudFileSHA = result.content.sha;
+            }
+        } catch(e) { console.log('Push error:', e); }
     }, 300);
 }
 
@@ -1999,12 +2031,21 @@ function schedulePush() {
 async function pullFromCloud() {
     if (!currentUser) return;
     try {
-        const res = await fetch(SYNC_API + currentUser);
+        const res = await fetch(GH_API, {
+            headers: {
+                'Authorization': 'Bearer ' + GH_TOKEN,
+                'Accept': 'application/vnd.github.v3+json'
+            }
+        });
         if (res.ok) {
-            const cloudData = await res.json();
-            writeCloudToLocal(cloudData);
+            const fileData = await res.json();
+            cloudFileSHA = fileData.sha;
+            const raw = fileData.content.replace(/\s/g, '');
+            const jsonStr = decodeURIComponent(escape(atob(raw)));
+            const content = JSON.parse(jsonStr);
+            writeCloudToLocal(content);
         }
-    } catch(e) {}
+    } catch(e) { console.log('Pull error:', e); }
 }
 
 function startSync() {
@@ -2035,16 +2076,26 @@ async function doLogin() {
         currentUser = shopCode;
         localStorage.setItem('smokeshop_user', shopCode);
 
-        // 从 Flask 服务器拉取云端数据
+        // 从 GitHub 拉取云端数据
         try {
-            const res = await fetch(SYNC_API + shopCode);
+            const res = await fetch(GH_API, {
+                headers: {
+                    'Authorization': 'Bearer ' + getToken(),
+                    'Accept': 'application/vnd.github.v3+json'
+                }
+            });
             if (res.ok) {
-                const cloudData = await res.json();
+                const fileData = await res.json();
+                cloudFileSHA = fileData.sha;
+                // GitHub 返回的 base64 含换行，先去掉再解码
+                const raw = fileData.content.replace(/\s/g, '');
+                const jsonStr = decodeURIComponent(escape(atob(raw)));
+                const cloudData = JSON.parse(jsonStr);
                 if (cloudData && Object.keys(cloudData).length > 0) {
                     writeCloudToLocalForce(cloudData);
                 }
             }
-        } catch(e) {}
+        } catch(e) { console.log('Login sync error:', e); }
 
         document.getElementById('loginPage').style.display = 'none';
         document.getElementById('app').style.display = 'flex';
@@ -2237,11 +2288,19 @@ async function init() {
     }
     currentUser = savedUser;
     
-    // 尝试从 Flask 服务器拉取数据
+    // 尝试从 GitHub 拉取数据
     try {
-        const res = await fetch(SYNC_API + currentUser);
+        const res = await fetch(GH_API, {
+            headers: {
+                'Authorization': 'Bearer ' + GH_TOKEN,
+                'Accept': 'application/vnd.github.v3+json'
+            }
+        });
         if (res.ok) {
-            const cloudData = await res.json();
+            const fileData = await res.json();
+            cloudFileSHA = fileData.sha;
+            const raw = fileData.content.replace(/\s/g, '');
+            const cloudData = JSON.parse(decodeURIComponent(escape(atob(raw))));
             if (cloudData && Object.keys(cloudData).length > 0) {
                 writeCloudToLocalForce(cloudData);
             }
