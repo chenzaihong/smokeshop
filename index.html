@@ -1764,7 +1764,7 @@
 
         <div class="about-box">
             <div class="app-name">🏪 烟酒店工作台</div>
-            <div class="version">版本 3.2.0 · PWA · 云端同步(已修复)</div>
+            <div class="version">版本 3.3.0 · PWA · 云端同步(已修复)</div>
             <div style="margin-top:8px;font-size:12px;">手机端营业管理工具</div>
         </div>
     </div>
@@ -2761,23 +2761,54 @@ function loadData() {
 }
 
 // 保存时：把当前内存数据与 localStorage 中已有的墓碑合并，再写入
-// 这样删除操作产生的墓碑不会被 save 覆盖丢失
 function saveWithTombstones(storageKey, liveData) {
     try {
         const existing = localStorage.getItem(storageKey);
         if (existing) {
             const parsed = JSON.parse(existing);
             if (Array.isArray(parsed)) {
-                // 取出 localStorage 中有但内存中没有的墓碑记录
                 const liveIds = new Set(liveData.map(r => getRecordId(r, storageKey)).filter(Boolean));
                 const tombstones = parsed.filter(r => r && r._deleted && getRecordId(r, storageKey) && !liveIds.has(getRecordId(r, storageKey)));
                 const combined = [...liveData, ...tombstones];
-                syncToCloud(storageKey, combined);
+                localStorage.setItem(storageKey, JSON.stringify(combined));
+                schedulePush();
                 return;
             }
         }
     } catch(e) {}
-    syncToCloud(storageKey, liveData);
+    localStorage.setItem(storageKey, JSON.stringify(liveData));
+    schedulePush();
+}
+
+// 标记删除并保存墓碑：先写墓碑到 localStorage，再从内存变量中移除
+function deleteAndSync(storageKey, arr, id) {
+    // 1. 标记墓碑
+    const ts = Date.now();
+    const dev = getDeviceId();
+    arr = arr.map(r => r.id === id ? { ...r, _deleted: true, _ts: ts, _dev: dev } : r);
+    // 2. 把含墓碑的完整数组写入 localStorage（保留墓碑供其他设备同步）
+    const tombstoneRecord = arr.find(r => r.id === id);
+    try {
+        const existing = localStorage.getItem(storageKey);
+        let combined = arr;
+        if (existing) {
+            const parsed = JSON.parse(existing);
+            if (Array.isArray(parsed)) {
+                // 保留其他已有的墓碑，加上当前新墓碑和非删除记录
+                const existingTombstones = parsed.filter(r => r && r._deleted && r.id !== id);
+                combined = [...arr.filter(r => !r._deleted), ...existingTombstones];
+                if (tombstoneRecord) combined.push(tombstoneRecord);
+            }
+        }
+        localStorage.setItem(storageKey, JSON.stringify(combined));
+    } catch(e) {
+        localStorage.setItem(storageKey, JSON.stringify(arr));
+    }
+    // 3. 从内存变量中移除墓碑（界面不显示已删除记录）
+    arr = arr.filter(r => !r._deleted);
+    // 4. 推送到云端
+    schedulePush();
+    return arr;
 }
 
 function saveData() {
@@ -3642,9 +3673,7 @@ function saveInventoryInline() {
 
 function deleteInventory(id) {
     if (!confirm('确定删除这个库存商品？')) return;
-    inventory = inventory.map(i => i.id === id ? { ...i, _deleted: true, _ts: Date.now(), _dev: getDeviceId() } : i);
-    inventory = inventory.filter(i => !i._deleted);
-    saveInventory();
+    inventory = deleteAndSync(INV_KEY, inventory, id);
     renderInventoryList();
     renderInvRecentList();
     updateInvStats();
@@ -4494,11 +4523,8 @@ function deleteRecord(id) {
     if (row && row.name && row.quantity) {
         restockInventory(row.name, row.category, row.quantity);
     }
-    // 墓碑机制：标记删除而非物理删除，让其他设备能同步删除操作
-    data = data.map(r => r.id === id ? { ...r, _deleted: true, _ts: Date.now(), _dev: getDeviceId() } : r);
-    // 界面上过滤掉已删除的记录
-    data = data.filter(r => !r._deleted);
-    saveData();
+    // 墓碑机制：标记删除，保留墓碑供其他设备同步
+    data = deleteAndSync(STORAGE_KEY, data, id);
     renderDetailList();
     renderSummary();
     updateQuickStats();
@@ -4682,9 +4708,7 @@ function renderDailyExpenseDetail() {
 
 function deleteExpense(id) {
     if (!confirm('确定删除这条支出记录？')) return;
-    expenses = expenses.map(r => r.id === id ? { ...r, _deleted: true, _ts: Date.now(), _dev: getDeviceId() } : r);
-    expenses = expenses.filter(r => !r._deleted);
-    saveExpenseData();
+    expenses = deleteAndSync(EXP_KEY, expenses, id);
     renderDetailList();
     renderSummary();
     updateExpenseQuickStats();
@@ -4897,9 +4921,7 @@ function deleteDist(id) {
     if (row && row.name) {
         restockDistInventory(row.name, row.quantity);
     }
-    distributes = distributes.map(r => r.id === id ? { ...r, _deleted: true, _ts: Date.now(), _dev: getDeviceId() } : r);
-    distributes = distributes.filter(r => !r._deleted);
-    saveDistData();
+    distributes = deleteAndSync(DIST_KEY, distributes, id);
     renderDetailList();
     renderSummary();
     updateDistQuickStats();
@@ -4998,9 +5020,7 @@ function addDistInventory() {
 // 删除收烟库存
 function deleteDistInventory(id) {
     if (!confirm('确定删除这条收烟库存？')) return;
-    distInventory = distInventory.map(i => i.id === id ? { ...i, _deleted: true, _ts: Date.now(), _dev: getDeviceId() } : i);
-    distInventory = distInventory.filter(i => !i._deleted);
-    saveDistInventory();
+    distInventory = deleteAndSync(DIST_INV_KEY, distInventory, id);
     renderDistInventory();
     updateDistInvStats();
     showToast('已删除', 'success');
@@ -6146,7 +6166,7 @@ init();
 // Register Service Worker for PWA
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=9')
+        navigator.serviceWorker.register('/sw.js?v=10')
             .then(reg => {
                 console.log('SW registered:', reg.scope);
                 // 检查更新，有新版本立即激活
