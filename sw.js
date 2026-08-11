@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smokeshop-workbench-v9';
+const CACHE_NAME = 'smokeshop-workbench-v10';
 const ASSETS = [
   '/',
   '/index.html',
