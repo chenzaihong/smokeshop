@@ -1764,7 +1764,7 @@
 
         <div class="about-box">
             <div class="app-name">🏪 烟酒店工作台</div>
-            <div class="version">版本 3.0.0 · PWA · 云端同步</div>
+            <div class="version">版本 3.1.0 · PWA · 云端同步(已修复)</div>
             <div style="margin-top:8px;font-size:12px;">手机端营业管理工具</div>
         </div>
     </div>
@@ -1918,10 +1918,21 @@
 // ==================== 云端同步层（GitHub API） ====================
 // 数据存储在 GitHub 仓库的 data/sync.json 文件中
 // 双向实时同步，无需后端服务器
+// ---- v3.1 同步修复：设备ID + 按记录合并 + PUT失败重试 + 回前台拉取 + ETag ----
 const GH_OWNER = 'chenzaihong';
 const GH_REPO = 'smokeshop';
 const GH_FILE = 'data/sync.json';
 const GH_API = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`;
+
+// 设备唯一标识：首次生成后持久化，用于合并冲突时区分来源
+function getDeviceId() {
+    let id = localStorage.getItem('smokeshop_device_id');
+    if (!id) {
+        id = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6);
+        localStorage.setItem('smokeshop_device_id', id);
+    }
+    return id;
+}
 
 // Token 从 localStorage 读取
 function getToken() {
@@ -1945,7 +1956,86 @@ let isAppReady = false;
 let pollTimer = null;
 let pushTimer = null;
 let cloudFileSHA = null;  // GitHub 文件 SHA，更新时需要
-const SYNC_INTERVAL = 4000;  // 4秒轮询（GitHub API 5000次/小时够用）
+let cloudETag = null;     // ETag，减少无变更时的传输
+let isPushing = false;    // 防止并发推送
+const SYNC_INTERVAL = 6000;  // 6秒轮询（降低频率，配合ETag减少API消耗）
+const PUSH_DEBOUNCE = 1500;  // debounce 拉长到1.5秒，减少并发冲突窗口
+const MAX_PUSH_RETRY = 3;    // PUT失败最大重试次数
+
+// ========== 合并策略：按记录ID合并，避免全量覆盖丢数据 ==========
+// 对每类数据，按记录的唯一标识（id / name / date+category）去重合并
+// 规则：同id取最新ts；无id的配置类按name去重取最新
+
+function getRecordId(record, key) {
+    if (!record || typeof record !== 'object') return null;
+    // 有 id 字段优先用 id
+    if (record.id) return String(record.id);
+    // 配置类按 name 去重
+    if (record.name) return 'name:' + record.name;
+    // 分发记录可能有 brand
+    if (record.brand) return 'brand:' + record.brand;
+    // 退而求其次：date + category 组合
+    if (record.date && record.category) return 'dc:' + record.date + ':' + record.category;
+    return null;
+}
+
+// 为本地记录补充 ts 和 dev 字段（如果缺失）
+function stampRecord(record) {
+    if (!record._ts) record._ts = Date.now();
+    if (!record._dev) record._dev = getDeviceId();
+    return record;
+}
+
+// 合并两个同类型数组：本地 vs 云端，按记录ID去重，保留最新
+function mergeArrays(localArr, cloudArr, key) {
+    if (!Array.isArray(localArr)) localArr = [];
+    if (!Array.isArray(cloudArr)) cloudArr = [];
+    const map = new Map();
+    const noIdLocal = [];
+    const noIdCloud = [];
+
+    // 先放云端记录
+    for (const r of cloudArr) {
+        const id = getRecordId(r, key);
+        if (id) {
+            map.set(id, { ...r });
+        } else {
+            noIdCloud.push(r);
+        }
+    }
+    // 再合并本地记录（同id取最新ts）
+    for (const r of localArr) {
+        const id = getRecordId(r, key);
+        if (id) {
+            const existing = map.get(id);
+            if (!existing) {
+                map.set(id, { ...r });
+            } else {
+                const localTs = r._ts || 0;
+                const cloudTs = existing._ts || 0;
+                if (localTs >= cloudTs) {
+                    map.set(id, { ...r });
+                }
+            }
+        } else {
+            noIdLocal.push(r);
+        }
+    }
+    // 无ID的记录：本地优先（配置类，本地通常是最新的）
+    // 但如果云端有而本地没有的，也要保留
+    const result = Array.from(map.values());
+    // 无ID记录去重（按 JSON 字符串）
+    const seenNoId = new Set();
+    for (const r of noIdLocal) {
+        const sig = JSON.stringify(r);
+        if (!seenNoId.has(sig)) { result.push(r); seenNoId.add(sig); }
+    }
+    for (const r of noIdCloud) {
+        const sig = JSON.stringify(r);
+        if (!seenNoId.has(sig)) { result.push(r); seenNoId.add(sig); }
+    }
+    return result;
+}
 
 // ========== 双向实时同步（GitHub API） ==========
 
@@ -1958,15 +2048,19 @@ function buildCloudPayload() {
     return payload;
 }
 
+// 智能合并：云端数据与本地合并（不再无条件覆盖）
 function writeCloudToLocal(cloudData) {
     if (!cloudData || typeof cloudData !== 'object') return;
     let changed = false;
-    for (const [key, value] of Object.entries(cloudData)) {
+    for (const [key, cloudValue] of Object.entries(cloudData)) {
         if (!SYNC_KEY_MAP[key]) continue;
-        const current = localStorage.getItem(key);
-        const newVal = JSON.stringify(value);
-        if (current !== newVal) {
-            localStorage.setItem(key, newVal);
+        const localRaw = localStorage.getItem(key);
+        const localArr = localRaw ? JSON.parse(localRaw) : [];
+        // 智能合并
+        const merged = mergeArrays(localArr, cloudValue, key);
+        const mergedStr = JSON.stringify(merged);
+        if (localRaw !== mergedStr) {
+            localStorage.setItem(key, mergedStr);
             changed = true;
         }
     }
@@ -1977,70 +2071,134 @@ function writeCloudToLocal(cloudData) {
     }
 }
 
+// 登录时合并：也用智能合并，不再强制覆盖
 function writeCloudToLocalForce(cloudData) {
-    if (!cloudData || typeof cloudData !== 'object') return;
-    for (const [key, value] of Object.entries(cloudData)) {
-        if (!SYNC_KEY_MAP[key]) continue;
-        localStorage.setItem(key, JSON.stringify(value));
-    }
-    loadConfig(); loadData(); loadExpenseData(); loadDistData();
-    loadFixedExpenses(); loadInventory(); loadDistInventory();
+    writeCloudToLocal(cloudData);
 }
 
-// 推送到云端（debounce：每次调用重置定时器，300ms空闲后触发）
+// 推送到云端（debounce 1.5秒 + 失败重试 + 冲突合并）
 let _pushTimer = null;
 function schedulePush() {
     if (!currentUser) return;
     if (_pushTimer) clearTimeout(_pushTimer);
     _pushTimer = setTimeout(async () => {
         _pushTimer = null;
-        if (!currentUser) return;
-        try {
-            const payload = buildCloudPayload();
-            const jsonStr = JSON.stringify(payload);
-            const b64 = btoa(unescape(encodeURIComponent(jsonStr)));
-            const body = {
-                message: 'sync: ' + new Date().toISOString(),
-                content: b64,
-                branch: 'main'
-            };
-            if (cloudFileSHA) body.sha = cloudFileSHA;
-            
-            const res = await fetch(GH_API, {
-                method: 'PUT',
-                headers: {
-                    'Authorization': 'Bearer ' + getToken(),
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/vnd.github.v3+json'
-                },
-                body: JSON.stringify(body)
-            });
-            if (res.ok) {
-                const result = await res.json();
-                cloudFileSHA = result.content.sha;
-            }
-        } catch(e) { console.log('Push error:', e); }
-    }, 300);
+        await doCloudPush(0);
+    }, PUSH_DEBOUNCE);
 }
 
-// 从云端拉取
+// 实际推送逻辑，带重试
+async function doCloudPush(retryCount) {
+    if (!currentUser || isPushing) return;
+    isPushing = true;
+    try {
+        const payload = buildCloudPayload();
+        const jsonStr = JSON.stringify(payload);
+        const b64 = btoa(unescape(encodeURIComponent(jsonStr)));
+        const body = {
+            message: 'sync: ' + new Date().toISOString() + ' [' + getDeviceId() + ']',
+            content: b64,
+            branch: 'main'
+        };
+
+        // 先拉取最新 SHA，确保不覆盖别人的更新
+        try {
+            const pullRes = await fetch(GH_API, {
+                headers: {
+                    'Authorization': 'Bearer ' + getToken(),
+                    'Accept': 'application/vnd.github.v3+json',
+                    ...(cloudETag ? { 'If-None-Match': cloudETag } : {})
+                }
+            });
+            if (pullRes.status === 200) {
+                const fileData = await pullRes.json();
+                cloudFileSHA = fileData.sha;
+                cloudETag = pullRes.headers.get('ETag') || cloudETag;
+                // 云端有更新，先合并到本地再推送
+                const raw = fileData.content.replace(/\s/g, '');
+                const cloudJsonStr = decodeURIComponent(escape(atob(raw)));
+                const cloudData = JSON.parse(cloudJsonStr);
+                // 合并云端数据到本地
+                let cloudChanged = false;
+                for (const [key, cloudValue] of Object.entries(cloudData)) {
+                    if (!SYNC_KEY_MAP[key]) continue;
+                    const localRaw = localStorage.getItem(key);
+                    const localArr = localRaw ? JSON.parse(localRaw) : [];
+                    const merged = mergeArrays(localArr, cloudValue, key);
+                    const mergedStr = JSON.stringify(merged);
+                    if (localRaw !== mergedStr) {
+                        localStorage.setItem(key, mergedStr);
+                        cloudChanged = true;
+                    }
+                }
+                if (cloudChanged && isAppReady) {
+                    loadConfig(); loadData(); loadExpenseData(); loadDistData();
+                    loadFixedExpenses(); loadInventory(); loadDistInventory();
+                    rerenderAll();
+                }
+            } else if (pullRes.status === 304) {
+                // 没变化，cloudFileSHA 不变
+            }
+        } catch(e) { console.log('Pre-push pull error:', e); }
+
+        // 用最新 SHA 构建请求体
+        if (cloudFileSHA) body.sha = cloudFileSHA;
+
+        const res = await fetch(GH_API, {
+            method: 'PUT',
+            headers: {
+                'Authorization': 'Bearer ' + getToken(),
+                'Content-Type': 'application/json',
+                'Accept': 'application/vnd.github.v3+json'
+            },
+            body: JSON.stringify(body)
+        });
+
+        if (res.ok) {
+            const result = await res.json();
+            cloudFileSHA = result.content.sha;
+        } else if (res.status === 409 && retryCount < MAX_PUSH_RETRY) {
+            // 409 冲突：别人刚写了，等500ms重新拉取SHA再试
+            console.log(`Push conflict (409), retry ${retryCount + 1}/${MAX_PUSH_RETRY}`);
+            cloudFileSHA = null;
+            cloudETag = null;
+            isPushing = false;
+            await new Promise(r => setTimeout(r, 500));
+            return doCloudPush(retryCount + 1);
+        } else if (res.status === 401) {
+            showToast('Token 无效或已过期，请重新登录', 'error');
+            doLogout();
+        } else {
+            console.log('Push failed:', res.status, await res.text());
+        }
+    } catch(e) {
+        console.log('Push error:', e);
+    } finally {
+        isPushing = false;
+    }
+}
+
+// 从云端拉取（配合ETag减少传输）
 async function pullFromCloud() {
     if (!currentUser) return;
     try {
         const res = await fetch(GH_API, {
             headers: {
                 'Authorization': 'Bearer ' + getToken(),
-                'Accept': 'application/vnd.github.v3+json'
+                'Accept': 'application/vnd.github.v3+json',
+                ...(cloudETag ? { 'If-None-Match': cloudETag } : {})
             }
         });
-        if (res.ok) {
+        if (res.status === 200) {
             const fileData = await res.json();
             cloudFileSHA = fileData.sha;
+            cloudETag = res.headers.get('ETag') || cloudETag;
             const raw = fileData.content.replace(/\s/g, '');
             const jsonStr = decodeURIComponent(escape(atob(raw)));
             const content = JSON.parse(jsonStr);
             writeCloudToLocal(content);
         }
+        // 304 = 无变化，不做任何处理
     } catch(e) { console.log('Pull error:', e); }
 }
 
@@ -2048,15 +2206,41 @@ function startSync() {
     if (pollTimer) clearInterval(pollTimer);
     pullFromCloud();
     pollTimer = setInterval(pullFromCloud, SYNC_INTERVAL);
+    // 页面回到前台时立即拉取一次
+    document.addEventListener('visibilitychange', onVisibilityChange);
 }
 
 function stopSync() {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     if (pushTimer) { clearInterval(pushTimer); pushTimer = null; }
+    if (_pushTimer) { clearTimeout(_pushTimer); _pushTimer = null; }
+    document.removeEventListener('visibilitychange', onVisibilityChange);
 }
 
-// 本地数据变更时：写入 localStorage 并推送到云端
+// 页面回到前台：立即拉取 + 如果有未推送的本地变更也推一次
+function onVisibilityChange() {
+    if (document.visibilityState === 'visible' && currentUser) {
+        pullFromCloud();
+        // 如果有 pending 的 push timer，提前触发
+        if (_pushTimer) {
+            clearTimeout(_pushTimer);
+            _pushTimer = null;
+            doCloudPush(0);
+        }
+    }
+}
+
+// 本地数据变更时：写入 localStorage（带时间戳和设备ID）并推送到云端
 function syncToCloud(storageKey, value) {
+    // 为数组中的记录补充时间戳和设备ID
+    if (Array.isArray(value)) {
+        value = value.map(r => {
+            if (r && typeof r === 'object' && !r._ts && !r._dev) {
+                return stampRecord(r);
+            }
+            return r;
+        });
+    }
     localStorage.setItem(storageKey, JSON.stringify(value));
     schedulePush();
 }
@@ -5900,7 +6084,7 @@ init();
 // Register Service Worker for PWA
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=7')
+        navigator.serviceWorker.register('/sw.js?v=8')
             .then(reg => {
                 console.log('SW registered:', reg.scope);
                 // 检查更新，有新版本立即激活
