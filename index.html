@@ -1805,6 +1805,13 @@
             <div id="distInvPreview" style="display:none;font-size:13px;color:var(--text-light);padding:8px 12px;background:var(--card-bg-2);border-radius:8px;margin-bottom:12px;"></div>
             <button class="btn btn-primary btn-block" onclick="addDistInventory()" style="margin-top:4px;">💾 保存入库</button>
         </div>
+
+        <!-- 每日收烟记录明细 -->
+        <div class="section-title">📊 每日收烟记录明细 <span class="count" id="distInvLogTotalCount"></span></div>
+        <div style="padding:0 16px;">
+            <div id="distInvLogSummary"></div>
+        </div>
+        <div id="distInvLogList"></div>
         </div>
 
         <!-- 收烟库存列表子页面 -->
@@ -2114,6 +2121,7 @@ const SYNC_KEY_MAP = {
     'smokeshop_distributes_v1': 'distributes',
     'smokeshop_dist_brands_v1': 'distBrands',
     'smokeshop_dist_inventory_v1': 'distInventory',
+    'smokeshop_dist_inv_log_v1': 'distInvLog',
     'smokeshop_fixed_expenses_v1': 'fixedExpenses',
     'smokeshop_inventory_v1': 'inventory'
 };
@@ -2268,7 +2276,7 @@ function writeCloudToLocal(cloudData) {
     }
     if (changed) {
         loadConfig(); loadData(); loadExpenseData(); loadDistData();
-        loadFixedExpenses(); loadInventory(); loadDistInventory();
+        loadFixedExpenses(); loadInventory(); loadDistInventory(); loadDistInvLog();
         if (isAppReady) rerenderAll();
     }
 }
@@ -2335,7 +2343,7 @@ async function doCloudPush(retryCount) {
                 }
                 if (cloudChanged && isAppReady) {
                     loadConfig(); loadData(); loadExpenseData(); loadDistData();
-                    loadFixedExpenses(); loadInventory(); loadDistInventory();
+                    loadFixedExpenses(); loadInventory(); loadDistInventory(); loadDistInvLog();
                     rerenderAll();
                 }
             } else if (pullRes.status === 304) {
@@ -2504,7 +2512,7 @@ function rerenderAll() {
         } else if (activePage.id === 'page-inventory') {
             if (currentInvSub === 'category') renderInventoryList();
             else if (currentInvSub === 'entry') { renderInvRecentList(); populateInvCatOptions(); }
-        } else if (activePage.id === 'page-distInv') { updateDistInvStats(); renderDistInventory(); }
+        } else if (activePage.id === 'page-distInv') { updateDistInvStats(); renderDistInventory(); renderDistInvLog(); }
         else if (activePage.id === 'page-settings') { renderSettingsCategories(); renderSettingsPayments(); renderSettingsExpCategories(); renderSettingsFixedExpenses(); }
     } catch(e) {}
 }
@@ -2536,6 +2544,7 @@ const DIST_BRAND_KEY = 'smokeshop_dist_brands_v1';
 const FIXED_EXP_KEY = 'smokeshop_fixed_expenses_v1';
 const INV_KEY = 'smokeshop_inventory_v1';
 const DIST_INV_KEY = 'smokeshop_dist_inventory_v1';
+const DIST_INV_LOG_KEY = 'smokeshop_dist_inv_log_v1';
 
 const DEFAULT_CATEGORIES = [
     { name: '香烟(包)', icon: '🚬', preset: true },
@@ -2676,6 +2685,7 @@ let distBrands = [];
 let fixedExpenses = [];
 let inventory = [];
 let distInventory = []; // 发烟库存：{id, name, code, qty(条), cost(元/条), createdAt}
+let distInvLog = []; // 收烟入库明细：{id, name, qty, cost, total, date, _ts, _dev}
 let editingInvId = null;
 let currentCategory = '';
 let currentPayment = '现金';
@@ -2726,6 +2736,7 @@ async function init() {
     // 清洗历史数据中的乱码
     sanitizeAllData();
     loadDistInventory();
+    loadDistInvLog();
     setDateInputs();
     autoGenerateFixedExpenses();
     renderCategoryGrid();
@@ -3121,6 +3132,21 @@ function loadDistInventory() {
 
 function saveDistInventory() {
     saveWithTombstones(DIST_INV_KEY, distInventory);
+}
+
+function loadDistInvLog() {
+    const saved = localStorage.getItem(DIST_INV_LOG_KEY);
+    if (saved) {
+        try {
+            const parsed = JSON.parse(saved);
+            distInvLog = Array.isArray(parsed) ? parsed.filter(r => r && typeof r === 'object' && !r._deleted) : [];
+        } catch(e) { distInvLog = []; }
+    }
+    if (!Array.isArray(distInvLog)) distInvLog = [];
+}
+
+function saveDistInvLog() {
+    saveWithTombstones(DIST_INV_LOG_KEY, distInvLog);
 }
 
 // 生成发烟编号
@@ -4306,6 +4332,7 @@ function switchDistInvSub(sub) {
         renderDistInventory();
     }
     if (sub === 'entry') {
+        renderDistInvLog();
         page.scrollTop = 0;
     }
 }
@@ -5337,7 +5364,7 @@ function addDistInventory() {
     if (qty <= 0) { showToast('请输入收烟数量', 'error'); return; }
     // 收烟成本改为选填，用户可手动输入
 
-    // 检查是否已有同名烟，有则累加
+    // 检查是否已有同名烟，有则累加库存
     const existing = distInventory.find(i => i.name === name);
     if (existing) {
         existing.qty += qty;
@@ -5361,8 +5388,26 @@ function addDistInventory() {
         showToast('已入库 · ' + newCode, 'success');
     }
 
+    // 写入每日明细记录（不合并，每次入库都生成一条）
+    const now = new Date();
+    const todayStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+    const logEntry = {
+        id: 'dil_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+        name: name,
+        qty: qty,
+        cost: cost,
+        total: (cost || 0) * qty,
+        date: todayStr,
+        time: now.getTime(),
+        _ts: Date.now(),
+        _dev: getDeviceId()
+    };
+    distInvLog.push(logEntry);
+
     saveDistInventory();
+    saveDistInvLog();
     renderDistInventory();
+    renderDistInvLog();
     updateDistInvStats();
     // 清空表单
     const nameEl = document.getElementById('fDistInvName');
@@ -5385,6 +5430,107 @@ function deleteDistInventory(id) {
     renderDistInventory();
     updateDistInvStats();
     showToast('已删除', 'success');
+}
+
+// 删除单条收烟明细
+function deleteDistInvLog(id) {
+    if (!confirm('确定删除这条收烟明细？')) return;
+    distInvLog = deleteAndSync(DIST_INV_LOG_KEY, distInvLog, id);
+    renderDistInvLog();
+    showToast('已删除', 'success');
+}
+
+// 渲染每日收烟记录明细
+function renderDistInvLog() {
+    const container = document.getElementById('distInvLogList');
+    const summaryEl = document.getElementById('distInvLogSummary');
+    const countEl = document.getElementById('distInvLogTotalCount');
+    if (!container) return;
+    if (!Array.isArray(distInvLog)) distInvLog = [];
+
+    // 今日日期
+    const now = new Date();
+    const todayStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+    const todayLogs = distInvLog.filter(r => r.date === todayStr);
+    const todayQty = todayLogs.reduce((s, r) => s + (r.qty || 0), 0);
+    const todayAmount = todayLogs.reduce((s, r) => s + (r.total || 0), 0);
+
+    if (countEl) countEl.textContent = distInvLog.length > 0 ? '(' + distInvLog.length + '条)' : '';
+
+    if (distInvLog.length === 0) {
+        container.innerHTML = '<div style="padding:14px 16px;text-align:center;color:var(--text-light);font-size:13px;">暂无收烟记录<br>在上方录入后会自动生成明细</div>';
+        if (summaryEl) summaryEl.innerHTML = '';
+        return;
+    }
+
+    // 顶部今日小结
+    if (summaryEl) {
+        summaryEl.innerHTML = 
+            '<div style="display:flex;gap:10px;">' +
+                '<div style="flex:1;background:linear-gradient(135deg,#16a085,#1abc9c);border-radius:10px;padding:12px;text-align:center;color:#fff;">' +
+                    '<div style="font-size:12px;opacity:0.9;">今日收烟条数</div>' +
+                    '<div style="font-size:22px;font-weight:700;margin-top:4px;">' + todayQty + ' 条</div>' +
+                '</div>' +
+                '<div style="flex:1;background:linear-gradient(135deg,#2980b9,#3498db);border-radius:10px;padding:12px;text-align:center;color:#fff;">' +
+                    '<div style="font-size:12px;opacity:0.9;">今日收烟金额</div>' +
+                    '<div style="font-size:22px;font-weight:700;margin-top:4px;">¥' + formatNum(todayAmount) + '</div>' +
+                '</div>' +
+            '</div>';
+    }
+
+    // 按日期分组
+    const groups = {};
+    distInvLog.forEach(r => {
+        const d = r.date || '';
+        if (!groups[d]) groups[d] = [];
+        groups[d].push(r);
+    });
+    // 日期排序（新的在前）
+    const dates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
+
+    let html = '';
+    dates.forEach(date => {
+        const rows = groups[date].slice().sort((a, b) => (b.time || 0) - (a.time || 0));
+        const dayQty = rows.reduce((s, r) => s + (r.qty || 0), 0);
+        const dayTotal = rows.reduce((s, r) => s + (r.total || 0), 0);
+        const dateLabel = formatDistInvDate(date);
+
+        html += '<div style="margin:8px 16px 12px;">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--card-bg-2);border-radius:8px;margin-bottom:6px;">' +
+                '<div style="font-size:13px;font-weight:700;color:var(--text);">📅 ' + dateLabel + '</div>' +
+                '<div style="font-size:12px;color:var(--text-light);">' + dayQty + '条 · ¥' + formatNum(dayTotal) + '</div>' +
+            '</div>' +
+            rows.map(r => {
+                return '<div class="card" style="padding:8px 12px;margin:0 0 4px;">' +
+                    '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+                        '<div style="flex:1;min-width:0;">' +
+                            '<div style="font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(r.name) + '</div>' +
+                            '<div style="font-size:12px;color:var(--text-light);margin-top:2px;">' +
+                                r.qty + '条' +
+                                (r.cost > 0 ? ' · ¥' + r.cost.toFixed(2) + '/条' : '') +
+                                ' · <span style="color:var(--primary);font-weight:600;">¥' + formatNum(r.total) + '</span>' +
+                            '</div>' +
+                        '</div>' +
+                        '<button class="rc-del" onclick="deleteDistInvLog(\'' + r.id + '\')" style="font-size:14px;flex-shrink:0;margin-left:8px;">✕</button>' +
+                    '</div>' +
+                '</div>';
+            }).join('') +
+        '</div>';
+    });
+    container.innerHTML = html;
+}
+
+function formatDistInvDate(dateStr) {
+    if (!dateStr) return '';
+    const today = new Date();
+    const todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+    const yest = new Date(today.getTime() - 86400000);
+    const yestStr = yest.getFullYear() + '-' + String(yest.getMonth() + 1).padStart(2, '0') + '-' + String(yest.getDate()).padStart(2, '0');
+    if (dateStr === todayStr) return '今天';
+    if (dateStr === yestStr) return '昨天';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) return parts[1] + '-' + parts[2];
+    return dateStr;
 }
 
 // 发烟库存搜索（收烟入库页面）
@@ -6419,7 +6565,8 @@ function handleFileImport(e) {
             if (backup.fixedExpenses) fixedExpenses = backup.fixedExpenses;
             if (backup.inventory) inventory = backup.inventory;
             if (backup.distInventory) distInventory = backup.distInventory;
-            saveData(); saveExpenseData(); saveDistData(); saveConfig(); saveExpenseConfig(); saveDistConfig(); saveFixedExpenses(); saveInventory(); saveDistInventory();
+            if (backup.distInvLog) distInvLog = backup.distInvLog;
+            saveData(); saveExpenseData(); saveDistData(); saveConfig(); saveExpenseConfig(); saveDistConfig(); saveFixedExpenses(); saveInventory(); saveDistInventory(); saveDistInvLog();
             renderCategoryGrid(); renderExpenseCategoryGrid(); renderPayGroup();
             renderSettingsCategories(); renderSettingsPayments(); renderSettingsExpCategories(); renderSettingsFixedExpenses();
             renderInventoryList(); renderDistInventory();
@@ -6441,8 +6588,9 @@ function clearAllData() {
     distributes = [];
     inventory = [];
     distInventory = [];
-    saveData(); saveExpenseData(); saveDistData(); saveInventory(); saveDistInventory();
-    renderDetailList(); renderSummary(); updateQuickStats(); updateExpenseQuickStats(); updateDistQuickStats(); updateInvStats(); renderInventoryList(); renderDistInventory();
+    distInvLog = [];
+    saveData(); saveExpenseData(); saveDistData(); saveInventory(); saveDistInventory(); saveDistInvLog();
+    renderDetailList(); renderSummary(); updateQuickStats(); updateExpenseQuickStats(); updateDistQuickStats(); updateInvStats(); renderInventoryList(); renderDistInventory(); renderDistInvLog();
     showToast('已清空全部数据', 'success');
 }
 
