@@ -6564,7 +6564,7 @@ function exportCSV() {
 }
 
 function exportJSON() {
-    const backup = { data, expenses, distributes, inventory, distInventory, categories, expenseCategories, distBrands, fixedExpenses, payments, theme: localStorage.getItem(THEME_KEY), exportDate: new Date().toISOString(), version: '2.5' };
+    const backup = { data, expenses, distributes, inventory, distInventory, distInvLog, categories, expenseCategories, distBrands, fixedExpenses, payments, theme: localStorage.getItem(THEME_KEY), exportDate: new Date().toISOString(), version: '2.5' };
     downloadBlob(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }), `烟酒店备份_${todayStr()}.json`);
     showToast('备份已导出', 'success');
 }
