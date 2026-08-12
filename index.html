@@ -1,3 +1,4 @@
+📋 点击复制全部代码 复制后到 GitHub 粘贴替换即可
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -426,8 +427,8 @@
 
         .today-stats {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 6px;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px 14px;
             padding: 16px;
             margin: 12px 16px;
             background: var(--gradient);
@@ -450,9 +451,9 @@
             pointer-events: none;
         }
 
-        .today-stat { text-align: center; position: relative; z-index: 1; }
-        .today-stat .label { font-size: 10px; opacity: 0.85; margin-bottom: 2px; }
-        .today-stat .value { font-size: 17px; font-weight: 700; }
+        .today-stat { text-align: center; position: relative; z-index: 1; min-width: 0; }
+        .today-stat .label { font-size: 11px; opacity: 0.85; margin-bottom: 4px; }
+        .today-stat .value { font-size: 18px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
         .category-grid {
             display: grid;
@@ -1207,6 +1208,171 @@
                 box-shadow: 0 0 40px rgba(0,0,0,0.2);
             }
         }
+
+        /* ========== 响应式适配 ========== */
+        /* 平板：501-900px，扩展宽度，统计卡片 4 列 */
+        @media (min-width: 501px) and (max-width: 900px) {
+            #app {
+                max-width: 768px;
+            }
+            .bottom-nav {
+                width: 72px;
+            }
+            .page {
+                margin-left: 72px;
+                width: calc(100% - 72px);
+            }
+            .sub-nav {
+                left: 72px;
+            }
+            .today-stats {
+                grid-template-columns: repeat(4, 1fr);
+            }
+            .category-grid {
+                grid-template-columns: repeat(4, 1fr);
+            }
+            .summary-mini-grid {
+                grid-template-columns: repeat(4, 1fr);
+            }
+        }
+
+        /* 桌面：≥901px，完整布局，统计卡片 4 列 */
+        @media (min-width: 901px) {
+            #app {
+                max-width: 1400px;
+                height: 100vh;
+                height: 100dvh;
+                display: grid;
+                grid-template-columns: 200px 1fr;
+                grid-template-rows: 1fr;
+            }
+            /* 侧边栏在桌面下变为可显示文字 */
+            .bottom-nav {
+                width: 200px;
+                position: relative;
+                height: 100%;
+                box-shadow: none;
+                border-right: 1px solid var(--border);
+                padding-top: 16px;
+            }
+            .nav-item {
+                font-size: 13px;
+                padding: 12px 16px;
+                flex-direction: row;
+                gap: 12px;
+                justify-content: flex-start;
+                border-radius: 0;
+            }
+            .nav-item .icon {
+                font-size: 20px;
+                margin-bottom: 0;
+            }
+            .nav-item.active {
+                background: rgba(26,82,118,0.08);
+                border-radius: 0;
+            }
+            .nav-item.active::before {
+                display: none;
+            }
+            .nav-item.active::after {
+                content: '';
+                position: absolute;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                width: 3px;
+                background: var(--primary);
+                border-radius: 0 3px 3px 0;
+            }
+            .page {
+                margin-left: 0;
+                width: 100%;
+                padding-bottom: 20px;
+            }
+            /* 子导航在桌面下并入顶部 */
+            .sub-nav {
+                position: sticky;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: auto;
+                border-bottom: 1px solid var(--border);
+                border-top: none;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+                padding: 0 16px;
+            }
+            .sub-nav-item {
+                flex: 0 0 auto;
+                padding: 14px 20px;
+                font-size: 13px;
+                flex-direction: row;
+                gap: 6px;
+            }
+            .sub-nav-item.active::after {
+                top: auto;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                width: auto;
+                height: 3px;
+                border-radius: 3px 3px 0 0;
+                transform: none;
+            }
+            /* 统计卡片 */
+            .today-stats {
+                grid-template-columns: repeat(4, 1fr);
+                margin: 16px 24px;
+                padding: 20px;
+            }
+            .today-stat .value {
+                font-size: 20px;
+            }
+            .category-grid {
+                grid-template-columns: repeat(6, 1fr);
+                padding: 16px 24px;
+            }
+            .summary-mini-grid {
+                grid-template-columns: repeat(4, 1fr);
+                margin: 0 24px;
+                gap: 14px;
+            }
+            .summary-hero {
+                margin: 16px 24px;
+                padding: 32px 16px;
+            }
+            .summary-hero .revenue {
+                font-size: 42px;
+            }
+            .summary-hero .sub {
+                gap: 36px;
+            }
+            .summary-hero .sub .v {
+                font-size: 18px;
+            }
+            /* 内容容器加宽 */
+            .card {
+                margin-left: 24px;
+                margin-right: 24px;
+            }
+            .card[style*="margin:0 16px"] {
+                margin: 0 24px !important;
+            }
+            .section-title {
+                margin-left: 24px;
+                margin-right: 24px;
+            }
+            /* 表单网格 */
+            .form-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .form-grid-3 {
+                grid-template-columns: repeat(3, 1fr);
+            }
+            /* 顶部 Header */
+            .page-header {
+                padding: 24px 24px 16px;
+            }
+        }
     </style>
 <script src="https://beacon.cdn.qq.com/sdk/4.5.9/beacon_web.min.js"></script>
 <script>
@@ -1303,14 +1469,6 @@
                 <div class="today-stat">
                     <div class="label">笔数</div>
                     <div class="value" id="eqCount">0</div>
-                </div>
-                <div class="today-stat">
-                    <div class="label">净利润</div>
-                    <div class="value" id="eqNet">¥0</div>
-                </div>
-                <div class="today-stat">
-                    <div class="label">支出占比</div>
-                    <div class="value" id="eqRatio">0%</div>
                 </div>
             </div>
 
@@ -1599,7 +1757,7 @@
         <div class="page-header">
             <div class="ph-left">
                 <h1>🚬 收烟管理</h1>
-                <div class="subtitle">收烟库存 · 入库录入</div>
+                <div class="subtitle" id="distInvSubtitle">收烟库存 · 入库录入</div>
                 <div class="date-display" id="distInvDateDisplay">📅 加载中...</div>
             </div>
             <div class="theme-toggle">
@@ -1622,12 +1780,10 @@
                 <div class="label">总成本</div>
                 <div class="value" id="diTotalCost">¥0</div>
             </div>
-            <div class="today-stat">
-                <div class="label">均价/条</div>
-                <div class="value" id="diAvgCost">¥0</div>
-            </div>
         </div>
 
+        <!-- 收烟录入子页面 -->
+        <div id="distInvSubEntry">
         <!-- 收烟录入表单 -->
         <div class="section-title">➕ 收烟录入</div>
         <div class="card" style="padding:16px;margin:0 16px;">
@@ -1650,10 +1806,13 @@
             <div id="distInvPreview" style="display:none;font-size:13px;color:var(--text-light);padding:8px 12px;background:var(--card-bg-2);border-radius:8px;margin-bottom:12px;"></div>
             <button class="btn btn-primary btn-block" onclick="addDistInventory()" style="margin-top:4px;">💾 保存入库</button>
         </div>
+        </div>
 
-        <!-- 收烟库存列表 -->
+        <!-- 收烟库存列表子页面 -->
+        <div id="distInvSubList" style="display:none;">
         <div class="section-title">📦 收烟库存列表 <span class="count" id="distInvCount"></span></div>
         <div id="distInvList"></div>
+        </div>
 
         <!-- 底部子导航 -->
         <div class="sub-nav">
@@ -2397,6 +2556,33 @@ const CATEGORY_ICON_POOL = [
     '🫘', '🥫', '🫙', '🫗', '🍩', '🌰', '🥠', '🥡'
 ];
 
+// 支出分类图标池（涵盖购物、出行、生活等场景）
+const EXPENSE_ICON_POOL = [
+    '🛒', '🛍️', '👕', '👔', '👗', '👟', '🎒', '💄',
+    '📱', '💻', '⌚', '🔌', '🔋', '💡', '🔧', '🧰',
+    '🚗', '🚌', '🚕', '🚲', '⛽', '🚇', '✈️', '🚆',
+    '🍜', '🍔', '🍕', '🍱', '🍣', '🍰', '☕', '🍵',
+    '🥤', '🍺', '🍷', '🧋', '🍩', '🍪', '🍫', '🍬',
+    '🏠', '🏢', '🏪', '🏥', '🏫', '🏦', '💊', '🩺',
+    '🎬', '🎮', '🎵', '📚', '🎨', '🎁', '🎉', '🎊',
+    '💼', '💰', '💳', '💵', '📦', '📮', '✉️', '📝',
+    '🐶', '🐱', '🐰', '🐯', '🐻', '🐼', '🐨', '🐸',
+    '🌳', '🌹', '🌻', '🌼', '🌸', '💐', '🌿', '🍀',
+    '⚽', '🏀', '🏈', '🎾', '🏐', '🏓', '🏸', '⛳',
+    '🧴', '🧼', '🧽', '🧯', '🛁', '🚿', '🪥', '🧻'
+];
+
+// 为新增支出品类随机选取一个未使用过的图标
+function pickFreshExpIcon() {
+    const usedIcons = new Set(expenseCategories.map(c => c.icon));
+    const available = EXPENSE_ICON_POOL.filter(ic => ic && !usedIcons.has(ic));
+    if (available.length > 0) {
+        return available[Math.floor(Math.random() * available.length)];
+    }
+    // 全用完了则随机取一个
+    return EXPENSE_ICON_POOL[Math.floor(Math.random() * EXPENSE_ICON_POOL.length)];
+}
+
 // 为新品类选取一个未使用过的图标（随机）
 function pickFreshIcon() {
     const usedIcons = new Set(categories.map(c => c.icon));
@@ -2597,7 +2783,10 @@ function switchTheme(theme) {
 function loadConfig() {
     const savedCats = localStorage.getItem(CAT_KEY);
     if (savedCats) {
-        try { categories = JSON.parse(savedCats); } catch(e) { categories = [...DEFAULT_CATEGORIES]; }
+        try {
+            const parsed = JSON.parse(savedCats);
+            categories = Array.isArray(parsed) ? parsed.filter(c => c && !c._deleted) : [...DEFAULT_CATEGORIES];
+        } catch(e) { categories = [...DEFAULT_CATEGORIES]; }
     } else {
         categories = [...DEFAULT_CATEGORIES];
     }
@@ -2607,7 +2796,10 @@ function loadConfig() {
 
     const savedPays = localStorage.getItem(PAY_KEY);
     if (savedPays) {
-        try { payments = JSON.parse(savedPays); } catch(e) { payments = [...DEFAULT_PAYMENTS]; }
+        try {
+            const parsed = JSON.parse(savedPays);
+            payments = Array.isArray(parsed) ? parsed.filter(p => p && !p._deleted) : [...DEFAULT_PAYMENTS];
+        } catch(e) { payments = [...DEFAULT_PAYMENTS]; }
     } else {
         payments = [...DEFAULT_PAYMENTS];
     }
@@ -2690,6 +2882,31 @@ function sanitizeCategoryName(cat) {
 function sanitizeAllData() {
     let changed = false;
 
+    // 处理支出分类图标重复：用户新增的支出品类旧逻辑都用了 💸 图标
+    // 这里给重复的品类重新分配不同的图标
+    const iconCount = {};
+    expenseCategories.forEach(c => {
+        iconCount[c.icon] = (iconCount[c.icon] || 0) + 1;
+    });
+    const hasDuplicateIcons = Object.values(iconCount).some(v => v > 1);
+    if (hasDuplicateIcons) {
+        const usedIcons = new Set(
+            DEFAULT_EXPENSE_CATEGORIES.map(c => c.icon) // 预设品类的图标保留
+        );
+        expenseCategories.forEach((c, idx) => {
+            if (c.preset) return; // 预设品类不动
+            if (usedIcons.has(c.icon) && iconCount[c.icon] > 1) {
+                // 找一个未使用的图标
+                const newIcon = EXPENSE_ICON_POOL.find(ic => !usedIcons.has(ic));
+                if (newIcon) {
+                    c.icon = newIcon;
+                    changed = true;
+                }
+            }
+            usedIcons.add(c.icon);
+        });
+    }
+
     data.forEach(r => {
         if (r.payment && containsReplacementChar(r.payment)) {
             r.payment = sanitizePaymentName(r.payment);
@@ -2746,6 +2963,7 @@ function sanitizeAllData() {
         saveDistData();
         saveInventory();
         saveConfig();
+        saveExpenseConfig();
     }
 }
 
@@ -2763,6 +2981,13 @@ function loadData() {
 // 保存时：把当前内存数据与 localStorage 中已有的墓碑合并，再写入
 function saveWithTombstones(storageKey, liveData) {
     try {
+        // 确保每条活跃记录都有 _ts 和 _dev（但不覆盖已有的）
+        liveData = liveData.map(r => {
+            if (r && typeof r === 'object' && !r._deleted && !r._ts) {
+                return stampRecord({ ...r });
+            }
+            return r;
+        });
         const existing = localStorage.getItem(storageKey);
         if (existing) {
             const parsed = JSON.parse(existing);
@@ -2828,7 +3053,10 @@ function loadExpenseData() {
 
     const savedExpCats = localStorage.getItem(EXP_CAT_KEY);
     if (savedExpCats) {
-        try { expenseCategories = JSON.parse(savedExpCats); } catch(e) { expenseCategories = [...DEFAULT_EXPENSE_CATEGORIES]; }
+        try {
+            const parsed = JSON.parse(savedExpCats);
+            expenseCategories = Array.isArray(parsed) ? parsed.filter(c => c && !c._deleted) : [...DEFAULT_EXPENSE_CATEGORIES];
+        } catch(e) { expenseCategories = [...DEFAULT_EXPENSE_CATEGORIES]; }
     } else {
         expenseCategories = [...DEFAULT_EXPENSE_CATEGORIES];
     }
@@ -2854,7 +3082,10 @@ function loadDistData() {
     if (!Array.isArray(distributes)) distributes = [];
     const savedBrands = localStorage.getItem(DIST_BRAND_KEY);
     if (savedBrands) {
-        try { distBrands = JSON.parse(savedBrands); } catch(e) { distBrands = [...DEFAULT_DIST_BRANDS]; }
+        try {
+            const parsed = JSON.parse(savedBrands);
+            distBrands = Array.isArray(parsed) ? parsed.filter(b => b && !b._deleted) : [...DEFAULT_DIST_BRANDS];
+        } catch(e) { distBrands = [...DEFAULT_DIST_BRANDS]; }
     } else {
         distBrands = [...DEFAULT_DIST_BRANDS];
     }
@@ -2875,15 +3106,6 @@ function loadDistInventory() {
         try {
             const parsed = JSON.parse(saved);
             distInventory = Array.isArray(parsed) ? parsed.filter(r => r && typeof r === 'object' && !r._deleted) : [];
-            // 清除所有收烟价格，用户手动输入
-            let changed = false;
-            distInventory.forEach(item => {
-                if (item.cost && item.cost > 0) {
-                    item.cost = 0;
-                    changed = true;
-                }
-            });
-            if (changed) saveDistInventory();
         } catch(e) { distInventory = []; }
     }
     if (!Array.isArray(distInventory)) distInventory = [];
@@ -2904,7 +3126,10 @@ function getDistCode(name) {
 function loadFixedExpenses() {
     const saved = localStorage.getItem(FIXED_EXP_KEY);
     if (saved) {
-        try { fixedExpenses = JSON.parse(saved); } catch(e) { fixedExpenses = [...DEFAULT_FIXED_EXPENSES]; }
+        try {
+            const parsed = JSON.parse(saved);
+            fixedExpenses = Array.isArray(parsed) ? parsed.filter(f => f && !f._deleted) : [...DEFAULT_FIXED_EXPENSES];
+        } catch(e) { fixedExpenses = [...DEFAULT_FIXED_EXPENSES]; }
     } else {
         fixedExpenses = [...DEFAULT_FIXED_EXPENSES];
     }
@@ -2998,6 +3223,8 @@ function updateFixedExpense(idx, field, value) {
     } else if (field === 'name') {
         fixedExpenses[idx].name = value.trim();
     }
+    fixedExpenses[idx]._ts = Date.now();
+    fixedExpenses[idx]._dev = getDeviceId();
     saveFixedExpenses();
     showToast('已更新', 'success');
 }
@@ -3006,13 +3233,30 @@ function removeFixedExpense(idx) {
     const fx = fixedExpenses[idx];
     if (fx.preset) { showToast('预设固定支出不可删除', 'error'); return; }
     if (!confirm('确定删除固定支出「' + fx.name + '」？\n已生成的历史记录不会删除。')) return;
-    // 删除未来自动生成的记录（保留历史已生成的）
+    // 删除未来自动生成的记录（保留历史已生成的）——用墓碑机制确保同步
     const fxId = fx.id;
     const today = todayStr();
-    expenses = expenses.filter(e => !(e.fixedId === fxId && e.date >= today));
-    saveExpenseData();
+    const toRemove = expenses.filter(e => e.fixedId === fxId && e.date >= today);
+    toRemove.forEach(e => {
+        expenses = deleteAndSync(EXP_KEY, expenses, e.id);
+    });
+    // 标记墓碑后保存
+    const tombstone = { ...fx, _deleted: true, _ts: Date.now(), _dev: getDeviceId() };
     fixedExpenses.splice(idx, 1);
-    saveFixedExpenses();
+    const existing = localStorage.getItem(FIXED_EXP_KEY);
+    let combined = [...fixedExpenses];
+    if (existing) {
+        try {
+            const parsed = JSON.parse(existing);
+            if (Array.isArray(parsed)) {
+                const oldTombstones = parsed.filter(f => f && f._deleted && f.id !== fx.id);
+                combined = [...fixedExpenses, ...oldTombstones];
+            }
+        } catch(e) {}
+    }
+    combined.push(tombstone);
+    localStorage.setItem(FIXED_EXP_KEY, JSON.stringify(combined));
+    schedulePush();
     renderSettingsFixedExpenses();
     renderDetailList(); renderSummary(); updateExpenseQuickStats();
     showToast('已删除', 'success');
@@ -3650,7 +3894,11 @@ function saveInventoryInline() {
 
     if (editingInvId) {
         const item = inventory.find(i => i.id === editingInvId);
-        if (item) { Object.assign(item, { name, category, qty, unit, cost }); }
+        if (item) {
+            Object.assign(item, { name, category, qty, unit, cost });
+            item._ts = Date.now();
+            item._dev = getDeviceId();
+        }
         showToast('已更新', 'success');
     } else {
         // 检查是否已有同名商品，有则累加
@@ -3658,9 +3906,14 @@ function saveInventoryInline() {
         if (existing) {
             existing.qty += qty;
             if (cost > 0) existing.cost = cost;
+            existing._ts = Date.now();
+            existing._dev = getDeviceId();
             showToast('已累加到现有库存', 'success');
         } else {
-            inventory.push({ id: 'inv_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6), name, category, qty, unit, cost, createdAt: Date.now() });
+            const newItem = { id: 'inv_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6), name, category, qty, unit, cost, createdAt: Date.now() };
+            newItem._ts = Date.now();
+            newItem._dev = getDeviceId();
+            inventory.push(newItem);
             showToast('已保存 ✓', 'success');
         }
     }
@@ -3782,6 +4035,8 @@ function deductInventory(name, category, qty) {
     } else {
         item.qty = Math.round((item.qty - deductQty) * 100) / 100;
     }
+    item._ts = Date.now();
+    item._dev = getDeviceId();
     saveInventory();
     return true;
 }
@@ -3797,6 +4052,8 @@ function restockInventory(name, category, qty) {
     else if (category === '香烟(包)' && item.unit === '条') addQty = qty / 10;
 
     item.qty = Math.round((item.qty + addQty) * 100) / 100;
+    item._ts = Date.now();
+    item._dev = getDeviceId();
     saveInventory();
 }
 
@@ -4023,19 +4280,35 @@ function switchDistInvSub(sub) {
     const page = document.getElementById('page-distInv');
     page.querySelectorAll('.sub-nav-item').forEach(n => n.classList.remove('active'));
     page.querySelector('.sub-nav-item[data-sub="' + sub + '"]')?.classList.add('active');
-    if (sub === 'entry') { page.scrollTop = 0; }
+
+    const entryEl = document.getElementById('distInvSubEntry');
+    const listEl = document.getElementById('distInvSubList');
+    if (entryEl) entryEl.style.display = sub === 'entry' ? '' : 'none';
+    if (listEl) listEl.style.display = sub === 'list' ? '' : 'none';
+
+    const subtitles = {
+        entry: '收烟入库录入',
+        list: '收烟库存列表'
+    };
+    const subEl = document.getElementById('distInvSubtitle');
+    if (subEl) subEl.textContent = subtitles[sub] || '';
+
+    if (sub === 'list') {
+        renderDistInventory();
+    }
+    if (sub === 'entry') {
+        page.scrollTop = 0;
+    }
 }
 
 function updateDistInvStats() {
     const typeCount = distInventory.length;
     const totalQty = distInventory.reduce((s, i) => s + (i.qty || 0), 0);
     const totalCost = distInventory.reduce((s, i) => s + (i.cost || 0) * (i.qty || 0), 0);
-    const avgCost = totalQty > 0 ? totalCost / totalQty : 0;
     const el = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
     el('diTypeCount', typeCount);
     el('diTotalQty', totalQty);
     el('diTotalCost', '¥' + formatNum(totalCost));
-    el('diAvgCost', '¥' + formatNum(avgCost));
     el('distInvCount', '(' + typeCount + '种)');
 }
 
@@ -4489,6 +4762,8 @@ function saveRecord() {
             // 编辑时：先退回旧库存，再扣新库存
             if (row.name && row.quantity) restockInventory(row.name, row.category, row.quantity);
             Object.assign(row, { name, category: currentCategory, unitPrice: price, quantity: qty, cost, revenue, profit, profitRate, payment: currentPayment, notes, date });
+            row._ts = Date.now();
+            row._dev = getDeviceId();
             deductInventory(name, currentCategory, qty);
         }
         showToast('已更新', 'success');
@@ -4631,6 +4906,8 @@ function saveExpense() {
         const row = expenses.find(r => r.id === editingExpId);
         if (row) {
             Object.assign(row, { name, category: currentExpCategory, amount, payment: currentExpPayment, notes, date });
+            row._ts = Date.now();
+            row._dev = getDeviceId();
         }
         showToast('已更新', 'success');
     } else {
@@ -4651,17 +4928,11 @@ function saveExpense() {
 function updateExpenseQuickStats() {
     const expenseDateVal = document.getElementById('expenseDate')?.value || todayStr();
     const todayExp = expenses.filter(r => r.date === expenseDateVal);
-    const todayRev = data.filter(r => r.date === expenseDateVal);
-    let expTotal = 0, revTotal = 0;
+    let expTotal = 0;
     todayExp.forEach(r => { expTotal += r.amount || 0; });
-    todayRev.forEach(r => { revTotal += r.revenue || 0; });
-    const net = revTotal - expTotal;
-    const ratio = revTotal > 0 ? (expTotal / revTotal * 100) : 0;
 
     document.getElementById('eqAmount').textContent = '¥' + formatNum(expTotal);
     document.getElementById('eqCount').textContent = todayExp.length;
-    document.getElementById('eqNet').textContent = (net >= 0 ? '¥' : '-¥') + formatNum(Math.abs(net));
-    document.getElementById('eqRatio').textContent = ratio.toFixed(0) + '%';
 
     // 同时渲染当日支出明细
     renderDailyExpenseDetail();
@@ -4833,6 +5104,8 @@ function saveDist() {
             // 编辑时先退回旧库存
             if (row.name && row.quantity) restockDistInventory(row.name, row.quantity);
             Object.assign(row, { name, brand: name, unitPrice: price, quantity: qty, costPerUnit: cost, shippingPerUnit: shipping, revenue, totalCost, profit, profitRate, payment: currentDistPayment, notes, date });
+            row._ts = Date.now();
+            row._dev = getDeviceId();
             // 扣除新库存
             deductDistInventory(name, qty);
         }
@@ -4986,17 +5259,22 @@ function addDistInventory() {
     if (existing) {
         existing.qty += qty;
         if (cost > 0) existing.cost = cost; // 仅在输入了成本时更新
+        existing._ts = Date.now();
+        existing._dev = getDeviceId();
         showToast('已累加到 ' + name, 'success');
     } else {
         const newCode = 'SY-' + String(distInventory.length + 1).padStart(3, '0');
-        distInventory.push({
+        const newItem = {
             id: 'di_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
             name: name,
             code: newCode,
             qty: qty,
             cost: cost,
             createdAt: Date.now()
-        });
+        };
+        newItem._ts = Date.now();
+        newItem._dev = getDeviceId();
+        distInventory.push(newItem);
         showToast('已入库 · ' + newCode, 'success');
     }
 
@@ -5220,6 +5498,8 @@ function deductDistInventory(name, qty) {
     } else {
         item.qty = Math.round((item.qty - qty) * 100) / 100;
     }
+    item._ts = Date.now();
+    item._dev = getDeviceId();
     saveDistInventory();
     renderDistInventory();
     return true;
@@ -5230,6 +5510,8 @@ function restockDistInventory(name, qty) {
     let item = distInventory.find(i => i.name === name);
     if (!item) return;
     item.qty = Math.round((item.qty + qty) * 100) / 100;
+    item._ts = Date.now();
+    item._dev = getDeviceId();
     saveDistInventory();
     renderDistInventory();
 }
@@ -5878,8 +6160,26 @@ function removeCategory(idx) {
     const cat = categories[idx];
     if (cat.preset) { showToast('预设品类不可删除', 'error'); return; }
     if (!confirm('确定删除品类「' + cat.name + '」？')) return;
+    // 标记墓碑，确保其他设备同步删除
+    const tombstone = { ...cat, _deleted: true, _ts: Date.now(), _dev: getDeviceId() };
+    // 从内存移除
     categories.splice(idx, 1);
-    saveConfig();
+    // 写入 localStorage：活跃记录 + 墓碑
+    const existing = localStorage.getItem(CAT_KEY);
+    let combined = [...categories];
+    if (existing) {
+        try {
+            const parsed = JSON.parse(existing);
+            if (Array.isArray(parsed)) {
+                // 保留其他墓碑，移除同名的（活跃和墓碑都移除）
+                const oldTombstones = parsed.filter(c => c && c._deleted && c.name !== cat.name);
+                combined = [...categories, ...oldTombstones];
+            }
+        } catch(e) {}
+    }
+    combined.push(tombstone);
+    localStorage.setItem(CAT_KEY, JSON.stringify(combined));
+    schedulePush();
     refreshAllCategoryUI();
     showToast('已删除', 'success');
 }
@@ -5901,8 +6201,23 @@ function removePayment(idx) {
     const pay = payments[idx];
     if (pay.preset) { showToast('预设支付方式不可删除', 'error'); return; }
     if (!confirm('确定删除支付方式「' + pay.name + '」？')) return;
+    // 标记墓碑，确保其他设备同步删除
+    const tombstone = { ...pay, _deleted: true, _ts: Date.now(), _dev: getDeviceId() };
     payments.splice(idx, 1);
-    saveConfig();
+    const existing = localStorage.getItem(PAY_KEY);
+    let combined = [...payments];
+    if (existing) {
+        try {
+            const parsed = JSON.parse(existing);
+            if (Array.isArray(parsed)) {
+                const oldTombstones = parsed.filter(p => p && p._deleted && p.name !== pay.name);
+                combined = [...payments, ...oldTombstones];
+            }
+        } catch(e) {}
+    }
+    combined.push(tombstone);
+    localStorage.setItem(PAY_KEY, JSON.stringify(combined));
+    schedulePush();
     renderSettingsPayments();
     renderPayGroup();
     showToast('已删除', 'success');
@@ -5922,7 +6237,7 @@ function addCustomExpCategory() {
     const name = input.value.trim();
     if (!name) { showToast('请输入支出品类名称', 'error'); return; }
     if (expenseCategories.find(c => c.name === name)) { showToast('该支出品类已存在', 'error'); return; }
-    expenseCategories.push({ name, icon: '💸', preset: false });
+    expenseCategories.push({ name, icon: pickFreshExpIcon(), preset: false });
     saveExpenseConfig();
     renderSettingsExpCategories();
     renderExpenseCategoryGrid();
@@ -5934,8 +6249,23 @@ function removeExpCategory(idx) {
     const cat = expenseCategories[idx];
     if (cat.preset) { showToast('预设支出品类不可删除', 'error'); return; }
     if (!confirm('确定删除支出品类「' + cat.name + '」？')) return;
+    // 标记墓碑，确保其他设备同步删除
+    const tombstone = { ...cat, _deleted: true, _ts: Date.now(), _dev: getDeviceId() };
     expenseCategories.splice(idx, 1);
-    saveExpenseConfig();
+    const existing = localStorage.getItem(EXP_CAT_KEY);
+    let combined = [...expenseCategories];
+    if (existing) {
+        try {
+            const parsed = JSON.parse(existing);
+            if (Array.isArray(parsed)) {
+                const oldTombstones = parsed.filter(c => c && c._deleted && c.name !== cat.name);
+                combined = [...expenseCategories, ...oldTombstones];
+            }
+        } catch(e) {}
+    }
+    combined.push(tombstone);
+    localStorage.setItem(EXP_CAT_KEY, JSON.stringify(combined));
+    schedulePush();
     renderSettingsExpCategories();
     renderExpenseCategoryGrid();
     showToast('已删除', 'success');
