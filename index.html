@@ -453,6 +453,8 @@
         .today-stat { text-align: center; position: relative; z-index: 1; min-width: 0; }
         .today-stat .label { font-size: 11px; opacity: 0.85; margin-bottom: 4px; }
         .today-stat .value { font-size: 18px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .today-stat.feature .label { font-size: 12px; opacity: 0.9; }
+        .today-stat.feature .value { font-size: 28px; font-weight: 800; }
 
         .category-grid {
             display: grid;
@@ -1765,8 +1767,28 @@
             </div>
         </div>
 
-        <!-- 收烟库存统计 -->
-        <div class="today-stats" style="background: linear-gradient(135deg, #16a085, #1abc9c);">
+        <!-- 收烟录入子页面 - 统计卡片 -->
+        <div id="distInvStatsEntry" class="today-stats" style="background: linear-gradient(135deg, #16a085, #1abc9c);">
+            <div class="today-stat feature" style="grid-column: 1 / -1;">
+                <div class="label">今日收烟总成本</div>
+                <div class="value" id="diEntryTotalCost">¥0</div>
+            </div>
+            <div class="today-stat">
+                <div class="label">今日条数</div>
+                <div class="value" id="diEntryTotalQty">0</div>
+            </div>
+            <div class="today-stat">
+                <div class="label">今日种类</div>
+                <div class="value" id="diEntryTypeCount">0</div>
+            </div>
+        </div>
+
+        <!-- 收烟库存子页面 - 统计卡片 -->
+        <div id="distInvStatsList" class="today-stats" style="background: linear-gradient(135deg, #16a085, #1abc9c); display:none;">
+            <div class="today-stat feature" style="grid-column: 1 / -1;">
+                <div class="label">库存总成本</div>
+                <div class="value" id="diTotalCost">¥0</div>
+            </div>
             <div class="today-stat">
                 <div class="label">库存品种</div>
                 <div class="value" id="diTypeCount">0</div>
@@ -1774,10 +1796,6 @@
             <div class="today-stat">
                 <div class="label">总条数</div>
                 <div class="value" id="diTotalQty">0</div>
-            </div>
-            <div class="today-stat">
-                <div class="label">总成本</div>
-                <div class="value" id="diTotalCost">¥0</div>
             </div>
         </div>
 
@@ -4317,8 +4335,12 @@ function switchDistInvSub(sub) {
 
     const entryEl = document.getElementById('distInvSubEntry');
     const listEl = document.getElementById('distInvSubList');
+    const statsEntryEl = document.getElementById('distInvStatsEntry');
+    const statsListEl = document.getElementById('distInvStatsList');
     if (entryEl) entryEl.style.display = sub === 'entry' ? '' : 'none';
     if (listEl) listEl.style.display = sub === 'list' ? '' : 'none';
+    if (statsEntryEl) statsEntryEl.style.display = sub === 'entry' ? '' : 'none';
+    if (statsListEl) statsListEl.style.display = sub === 'list' ? '' : 'none';
 
     const subtitles = {
         entry: '收烟入库录入',
@@ -4327,6 +4349,7 @@ function switchDistInvSub(sub) {
     const subEl = document.getElementById('distInvSubtitle');
     if (subEl) subEl.textContent = subtitles[sub] || '';
 
+    updateDistInvStats();
     if (sub === 'list') {
         clearDistInvSearch();
         renderDistInventory();
@@ -4338,6 +4361,7 @@ function switchDistInvSub(sub) {
 }
 
 function updateDistInvStats() {
+    // 库存子页面的统计（始终计算，方便切换时立即显示）
     const typeCount = distInventory.length;
     const totalQty = distInventory.reduce((s, i) => s + (i.qty || 0), 0);
     const totalCost = distInventory.reduce((s, i) => s + (i.cost || 0) * (i.qty || 0), 0);
@@ -4346,6 +4370,17 @@ function updateDistInvStats() {
     el('diTotalQty', totalQty);
     el('diTotalCost', '¥' + formatNum(totalCost));
     el('distInvCount', '(' + typeCount + '种)');
+
+    // 录入子页面的统计（今日数据）
+    const now = new Date();
+    const todayStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+    const todayLogs = (Array.isArray(distInvLog) ? distInvLog : []).filter(r => r.date === todayStr);
+    const todayQty = todayLogs.reduce((s, r) => s + (r.qty || 0), 0);
+    const todayCost = todayLogs.reduce((s, r) => s + (r.total || 0), 0);
+    const todayTypeSet = new Set(todayLogs.map(r => r.name).filter(Boolean));
+    el('diEntryTotalCost', '¥' + formatNum(todayCost));
+    el('diEntryTotalQty', todayQty);
+    el('diEntryTypeCount', todayTypeSet.size);
 }
 
 // ========== Expense Summary ==========
